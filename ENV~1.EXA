@@ -1,0 +1,9 @@
+# Token de la @BotFather pe Telegram
+TELEGRAM_TOKEN=8204304081:AAEJjrxomASvc47FoQ5jki-CBONrxWONpoE
+# API Key din contul tau ElevenLabs (elevenlabs.io -> Profile -> API Key)
+ELEVENLABS_API_KEY=sk_688685fe4b54167ded595379ff1cde3d811b75c810934191
+
+# (Optional) Voice ID implicit - daca nu setezi, se foloseste vocea "Rachel"
+# Gasesti ID-ul in ElevenLabs la fiecare voce, sau folosesti /voice in bot
+VOICE_ID=qZ3Qq0MTSd0bn6fczvAo
+VOICE_ID=HwOEMHhh2e1D8q5o7QpC
