@@ -38,7 +38,7 @@ def tts(text, voice_id):
     payload = {
         "text": text,
         "model_id": "eleven_multilingual_v2",
-        "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+        "voice_settings": {"stability": 0.3, "similarity_boost": 0.85, "style": 0.5, "use_speaker_boost": True},
     }
     r = requests.post(url, json=payload, headers=headers, timeout=30)
     if r.status_code == 200:
