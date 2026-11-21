@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d0f12">
+<title>Turație</title>
+<style>
+  :root {
+    --bg: #0d0f12;
+    --panel: #161a20;
+    --panel-2: #1e232b;
+    --line: #2a313b;
+    --text: #e9edf2;
+    --muted: #8d97a5;
+    --accent: #ff5a1f;
+    --accent-2: #ffb020;
+    --ok: #3ccf7a;
+    --red: #ff3b3b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { padding: 16px; padding-bottom: 40px; max-width: 760px; margin: 0 auto;
+    -webkit-user-select: none; user-select: none; }
+  h1 { font-size: 22px; margin: 4px 0 2px; letter-spacing: .5px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 14px; margin-bottom: 12px; }
+  .label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted);
+    margin-bottom: 8px; }
+  #tacho { width: 100%; height: auto; display: block; }
+  .readout { display: flex; justify-content: space-around; text-align: center; margin-top: 10px; }
+  .readout b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+  .readout span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .profiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .prof { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px;
+    text-align: left; color: var(--text); cursor: pointer; font: inherit; }
+  .prof b { display: block; font-size: 14px; }
+  .prof small { color: var(--muted); font-size: 12px; }
+  .prof.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button.btn { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 12px 16px;
+    cursor: pointer; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.btn:disabled { opacity: .45; cursor: default; }
+  .tabs { display: flex; background: var(--panel-2); border-radius: 10px; padding: 3px; margin-bottom: 12px; }
+  .tabs button { flex: 1; font: inherit; font-weight: 600; background: transparent; color: var(--muted);
+    border: 0; border-radius: 8px; padding: 10px; cursor: pointer; }
+  .tabs button.on { background: var(--accent); color: #fff; }
+  #gas { width: 100%; height: 120px; border-radius: 14px; border: 0; font-size: 20px; font-weight: 800;
+    letter-spacing: 2px; color: #fff; background: linear-gradient(180deg, #ff6a2f, #d63d0a);
+    touch-action: none; cursor: pointer; }
+  #gas.down { background: linear-gradient(180deg, #ff8a4f, #ff5a1f); transform: scale(.99); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .field { margin: 10px 0; }
+  .field .top { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+  .toggle { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 6px 14px 6px 0; }
+  .toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+  #status { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  #status.ok { color: var(--ok); }
+  #status.err { color: var(--red); }
+  #log { font: 11px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); background: #0a0c0f;
+    border-radius: 8px; padding: 8px; max-height: 120px; overflow: auto; margin-top: 8px; white-space: pre-wrap;
+    display: none; }
+  .hint { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .hint b { color: var(--text); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <h1>Turație</h1>
+  <p class="sub">Sunet de motor virtual în boxele mașinii</p>
+
+  <div class="card">
+    <canvas id="tacho" width="700" height="380"></canvas>
+    <div class="readout">
+      <div><b id="thrTxt">0%</b><span>accelerație</span></div>
+      <div><b id="gearTxt">N</b><span>treaptă</span></div>
+      <div><b id="spdTxt">0</b><span>km/h</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <button class="btn primary" id="startBtn">▶ Pornește motorul</button>
+      <button class="btn" id="stopBtn" disabled>■ Oprește</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="label">Motor</div>
+    <div class="profiles" id="profiles"></div>
+  </div>
+
+  <div class="tabs">
+    <button id="tabSim" class="on">Simulator</button>
+    <button id="tabObd">Mașina mea (OBD)</button>
+  </div>
+
+  <div class="card" id="simPanel">
+    <button id="gas">ȚINE APĂSAT · ACCELERAȚIE</button>
+    <div class="field">
+      <div class="top"><span>Cât de tare apeși pedala</span><span id="pedalVal">100%</span></div>
+      <input type="range" id="pedal" min="10" max="100" value="100">
+    </div>
+    <label class="toggle"><input type="checkbox" id="driveMode" checked> Simulează mersul cu viteze</label>
+    <p class="hint">Pe calculator poți ține apăsat și <b>Space</b>.</p>
+  </div>
+
+  <div class="card hidden" id="obdPanel">
+    <p class="hint">
+      Ai nevoie de un <b>adaptor OBD2 ELM327 Bluetooth LE (BLE)</b>, introdus în priza OBD de sub volan.
+      Pornește contactul sau motorul, apoi apasă butonul de mai jos.
+      Funcționează în <b>Chrome pe Android</b> sau pe calculator. Pe iPhone, Safari nu are Bluetooth web.
+    </p>
+    <div class="row">
+      <button class="btn primary" id="obdBtn">Conectează adaptorul OBD</button>
+      <button class="btn" id="obdOff" disabled>Deconectează</button>
+    </div>
+    <div id="status">Neconectat</div>
+    <label class="toggle"><input type="checkbox" id="showLog"> Arată jurnalul tehnic</label>
+    <div id="log"></div>
+  </div>
+
+  <div class="card">
+    <div class="label">Setări sunet</div>
+    <div class="field">
+      <div class="top"><span>Volum</span><span id="volVal">70%</span></div>
+      <input type="range" id="vol" min="0" max="100" value="70">
+    </div>
+    <div class="row">
+      <label class="toggle"><input type="checkbox" id="pops" checked> Pocnituri la decelerare</label>
+      <label class="toggle"><input type="checkbox" id="turbo" checked> Fluierat turbo</label>
+    </div>
+    <p class="hint">Telefonul se conectează la mașină prin Bluetooth, ca pentru muzică. Sunetul iese în boxe.
+      Folosește aplicația doar în habitaclu și nu umbla la telefon în timp ce conduci.</p>
+  </div>
+
+<script>
+/* ---------- Profiles (generic engine types, procedurally synthesized) ---------- */
+const even = n => Array.from({ length: n }, (_, i) => i / n);
+const PROFILES = {
+  tsi4:   { name: '4 cilindri turbo', desc: 'Ca motorul tău 1.4 TSI, dar mai plin',
+            fire: even(4), amp: [1, .9, .97, .88], res: [[95, 2.5, .55], [260, 4, .35], [820, 5, .12]],
+            decay: .004, noise: .25, drive: 1.6, wBody: .8, wRes: 1, idle: 750, redline: 6200, turbo: true },
+  v8:     { name: 'V8 american', desc: 'Bas gros, „bolborosit” la ralanti',
+            fire: even(8), amp: [1, .58, .95, .7, .9, .55, 1, .64], res: [[68, 2, .75], [175, 3, .4], [470, 4, .15]],
+            decay: .006, noise: .35, drive: 2.6, wBody: 1, wRes: 1, idle: 650, redline: 6500, turbo: false },
+  boxer:  { name: 'Boxer 4 rally', desc: 'Ritm neregulat, specific',
+            fire: [0, .29, .5, .79], amp: [1, .78, .95, .74], res: [[85, 2.5, .6], [230, 3, .35], [650, 5, .1]],
+            decay: .005, noise: .3, drive: 2, wBody: .9, wRes: 1, idle: 800, redline: 7000, turbo: true },
+  i6:     { name: '6 în linie sport', desc: 'Neted și metalic',
+            fire: even(6), amp: [1, .95, .98, .93, .97, .94], res: [[120, 3, .45], [340, 4, .35], [1100, 6, .12]],
+            decay: .0035, noise: .18, drive: 1.8, wBody: .7, wRes: 1, idle: 700, redline: 7200, turbo: false },
+  v10:    { name: 'V10 supercar', desc: 'Țipă sus la turație',
+            fire: even(10), amp: [1, .9, .96, .88, .94, .92, 1, .87, .95, .9], res: [[150, 3, .4], [450, 4, .35], [1600, 6, .15]],
+            decay: .003, noise: .2, drive: 2.2, wBody: .6, wRes: 1, idle: 900, redline: 8700, turbo: false },
+  v12:    { name: 'V12 GT', desc: 'Fin, ca o turbină',
+            fire: even(12), amp: [1, .96, .98, .95, .97, .96, 1, .95, .98, .96, .97, .95], res: [[180, 3, .35], [600, 5, .3], [2000, 6, .15]],
+            decay: .0025, noise: .15, drive: 1.7, wBody: .5, wRes: 1, idle: 800, redline: 8500, turbo: false },
+  rotary: { name: 'Rotativ', desc: 'Bâzâit ascuțit, turează mult',
+            fire: even(4), amp: [1, .97, 1, .97], res: [[200, 2, .4], [700, 3, .4], [2400, 4, .2]],
+            decay: .002, noise: .4, drive: 3, wBody: .5, wRes: 1, idle: 900, redline: 9000, turbo: false },
+};
+const GEARS = [3.6, 2.1, 1.45, 1.08, .84, .68];
+
+/* ---------- DSP running in the audio thread ---------- */
+const WORKLET = `
+class EngineProc extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.p = null; this.rpm = 800; this.thr = 0; this.tRpm = 800; this.tThr = 0;
+    this.phase = 0; this.env = 0; this.body = 0; this.popEnv = 0; this.dcx = 0; this.dcy = 0;
+    this.turbo = 0; this.tph = 0; this.bov = 0; this.pops = true; this.turboOn = true; this.prevThr = 0;
+    this.port.onmessage = e => {
+      const d = e.data;
+      if (d.profile) this.setProfile(d.profile);
+      if (d.rpm !== undefined) this.tRpm = d.rpm;
+      if (d.thr !== undefined) {
+        if (this.p && this.p.turbo && this.prevThr > .5 && d.thr < .15 && this.turbo > .25) this.bov = 1;
+        this.prevThr = d.thr; this.tThr = d.thr;
+      }
+      if (d.pops !== undefined) this.pops = d.pops;
+      if (d.turbo !== undefined) this.turboOn = d.turbo;
+    };
+  }
+  setProfile(p) {
+    this.p = p;
+    this.res = p.res.map(([f, q, g]) => {
+      const w = 2 * Math.PI * f / sampleRate, r = Math.exp(-Math.PI * (f / q) / sampleRate);
+      return { b0: g * Math.sin(w), a1: 2 * r * Math.cos(w), a2: -r * r, y1: 0, y2: 0 };
+    });
+  }
+  process(inputs, outputs) {
+    const out = outputs[0][0], p = this.p;
+    if (!p) return true;
+    const sr = sampleRate;
+    for (let n = 0; n < out.length; n++) {
+      this.rpm += (this.tRpm - this.rpm) * 0.0006;
+      this.thr += (this.tThr - this.thr) * 0.001;
+      const rpm = this.rpm, thr = this.thr;
+      const prev = this.phase;
+      this.phase += rpm / 120 / sr;
+      let wrapped = false;
+      if (this.phase >= 1) { this.phase -= 1; wrapped = true; }
+      const limiter = rpm > p.redline * 0.985;
+      let exc = 0;
+      for (let i = 0; i < p.fire.length; i++) {
+        const o = p.fire[i];
+        const hit = wrapped ? (o >= prev || o < this.phase) : (o >= prev && o < this.phase);
+        if (!hit) continue;
+        if (limiter && Math.random() < 0.65) {
+          if (this.pops && Math.random() < 0.15) { exc += 1.6; this.popEnv = 1; }
+          continue;
+        }
+        let a = p.amp[i % p.amp.length] * (0.9 + 0.2 * Math.random()) * (0.3 + 0.7 * thr);
+        if (this.pops && thr < 0.06 && rpm > 2600 && this.tRpm < rpm && Math.random() < 0.035) {
+          a += 1.2 + Math.random() * 1.5; this.popEnv = 0.8 + Math.random() * 0.6;
+        }
+        exc += a;
+        this.env = Math.max(this.env, a);
+      }
+      const noise = Math.random() * 2 - 1;
+      const dT = p.decay * Math.min(1, Math.max(0.3, 1500 / rpm));
+      const k = Math.exp(-1 / (sr * dT));
+      this.body = this.body * k + exc;
+      this.env *= k;
+      this.popEnv *= 0.9992;
+      const src = exc + noise * this.env * p.noise * 0.15;
+      let res = 0;
+      for (const r of this.res) {
+        const y = r.b0 * src + r.a1 * r.y1 + r.a2 * r.y2;
+        r.y2 = r.y1; r.y1 = y; res += y;
+      }
+      let x = this.body * p.wBody + res * p.wRes + noise * this.env * p.noise * 0.3 + noise * this.popEnv * 0.5;
+      // turbo whistle + blow-off
+      if (p.turbo && this.turboOn) {
+        const tgt = thr > 0.3 ? thr * Math.min(1, rpm / (p.redline * 0.7)) : 0;
+        this.turbo += (tgt - this.turbo) * (tgt > this.turbo ? 0.00004 : 0.0002);
+        this.tph += 2 * Math.PI * (1800 + this.turbo * 6500) / sr;
+        if (this.tph > 6.283185) this.tph -= 6.283185;
+        x += Math.sin(this.tph) * this.turbo * 0.05;
+        if (this.bov > 0.001) { x += noise * this.bov * 0.35; this.bov *= 0.99985; }
+      } else this.turbo = 0;
+      // DC blocker
+      const y = x - this.dcx + 0.995 * this.dcy; this.dcx = x; this.dcy = y;
+      const drive = p.drive * (0.6 + 0.8 * thr);
+      out[n] = Math.tanh(y * drive) / Math.tanh(drive) * 0.55;
+    }
+    return true;
+  }
+}
+registerProcessor('engine', EngineProc);
+`;
+
+/* ---------- Audio engine ---------- */
+const audio = { ctx: null, node: null, lp: null, gain: null, analyser: null };
+async function startAudio() {
+  if (audio.ctx) { await audio.ctx.resume(); return; }
+  const ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+  const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }));
+  await ctx.audioWorklet.addModule(url);
+  const node = new AudioWorkletNode(ctx, 'engine', { outputChannelCount: [1] });
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.7; lp.frequency.value = 1200;
+  const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4;
+  const gain = ctx.createGain(); gain.gain.value = vol.value / 100;
+  const analyser = ctx.createAnalyser(); analyser.fftSize = 2048;
+  node.connect(lp).connect(comp).connect(gain).connect(ctx.destination);
+  gain.connect(analyser);
+  Object.assign(audio, { ctx, node, lp, gain, analyser });
+  node.port.postMessage({ profile: PROFILES[state.profile], pops: pops.checked, turbo: turbo.checked });
+}
+
+/* ---------- State & simulation ---------- */
+const $ = id => document.getElementById(id);
+const vol = $('vol'), pops = $('pops'), turbo = $('turbo'), pedal = $('pedal'), driveMode = $('driveMode');
+const state = { profile: 'tsi4', running: false, mode: 'sim', rpm: 0, thr: 0, thrTarget: 0, speed: 0, gear: 0,
+                obd: { rpm: null, rpmPrev: null, tRpm: 0, slope: 0, pedal: 0, pMin: 100, pMax: 0, speed: 0 } };
+
+function prof() { return PROFILES[state.profile]; }
+
+function stepSim(dt) {
+  const p = prof();
+  state.thr += (state.thrTarget - state.thr) * Math.min(1, dt * 12);
+  const thr = state.thr;
+  if (!driveMode.checked) {
+    state.gear = -1; state.speed = Math.max(0, state.speed - dt * 15);
+    const target = p.idle + thr * (p.redline * 1.03 - p.idle);
+    const rate = target > state.rpm ? 3.2 + 2 * thr : 2.2;
+    state.rpm += (target - state.rpm) * Math.min(1, rate * dt);
+  } else {
+    if (state.gear < 0) state.gear = 0;
+    const ratio = GEARS[state.gear];
+    const torque = 0.55 + 0.45 * Math.sin(Math.PI * Math.min(1, state.rpm / p.redline));
+    const accel = thr * 26 * (ratio / 3.6) * torque - 0.00045 * state.speed * state.speed - 0.6 - (1 - thr) * 1.2;
+    state.speed = Math.max(0, state.speed + accel * dt);
+    const wheelRpm = state.speed * ratio * 34;
+    const slip = state.gear === 0 ? p.idle + thr * 2400 : p.idle;
+    const target = Math.max(wheelRpm, state.speed < 20 && state.gear === 0 ? slip : p.idle);
+    state.rpm += (target - state.rpm) * Math.min(1, dt * 10);
+    if (state.rpm > p.redline * 0.94 && state.gear < GEARS.length - 1) state.gear++;
+    else if (state.gear > 0 && state.rpm < 1600 && thr < 0.3) state.gear--;
+  }
+  if (state.rpm > p.redline) state.rpm = p.redline - 200 - Math.random() * 150;
+}
+
+function stepObd(dt) {
+  const o = state.obd, p = prof();
+  if (o.rpm == null) { state.rpm += (p.idle - state.rpm) * dt * 2; return; }
+  // extrapolate a little to hide adapter latency
+  const target = Math.max(0, o.tRpm + o.slope * 0.12);
+  state.rpm += (target - state.rpm) * Math.min(1, dt * 9);
+  const range = Math.max(5, o.pMax - o.pMin);
+  const thr = Math.min(1, Math.max(0, (o.pedal - o.pMin) / range));
+  state.thr += (thr - state.thr) * Math.min(1, dt * 10);
+  state.speed = o.speed; state.gear = -2;
+}
+
+let last = performance.now();
+setInterval(() => {
+  const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (!state.running) return;
+  if (state.mode === 'sim') stepSim(dt); else stepObd(dt);
+  if (audio.node) {
+    audio.node.port.postMessage({ rpm: state.rpm, thr: state.thr });
+    const p = prof();
+    audio.lp.frequency.setTargetAtTime(900 + state.thr * 5000 + (state.rpm / p.redline) * 2500, audio.ctx.currentTime, 0.05);
+  }
+}, 16);
+
+/* ---------- Tachometer ---------- */
+const cv = $('tacho'), g2 = cv.getContext('2d');
+function draw() {
+  const p = prof(), W = cv.width, H = cv.height, cx = W / 2, cy = H - 40, R = Math.min(W / 2 - 30, H - 70);
+  const maxRpm = Math.ceil((p.redline + 1000) / 1000) * 1000;
+  const a0 = Math.PI * 0.9, a1 = Math.PI * 2.1, ang = r => a0 + (a1 - a0) * Math.min(1, r / maxRpm);
+  g2.clearRect(0, 0, W, H);
+  g2.lineCap = 'round';
+  g2.lineWidth = 22; g2.strokeStyle = '#232933';
+  g2.beginPath(); g2.arc(cx, cy, R, a0, a1); g2.stroke();
+  g2.strokeStyle = 'rgba(255,59,59,.35)';
+  g2.beginPath(); g2.arc(cx, cy, R, ang(p.redline), a1); g2.stroke();
+  const grad = g2.createLinearGradient(0, 0, W, 0);
+  grad.addColorStop(0, '#ffb020'); grad.addColorStop(1, '#ff3b1f');
+  g2.strokeStyle = state.rpm > p.redline * 0.95 ? '#ff3b3b' : grad;
+  g2.beginPath(); g2.arc(cx, cy, R, a0, ang(Math.max(1, state.rpm))); g2.stroke();
+  g2.fillStyle = '#8d97a5'; g2.font = '600 20px system-ui'; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+  for (let r = 0; r <= maxRpm; r += 1000) {
+    const a = ang(r), x = cx + Math.cos(a) * (R - 42), y = cy + Math.sin(a) * (R - 42);
+    g2.fillStyle = r >= p.redline ? '#ff5a5a' : '#8d97a5';
+    g2.fillText(r / 1000, x, y);
+  }
+  g2.fillStyle = '#e9edf2'; g2.font = '800 64px system-ui';
+  g2.fillText(Math.round(state.rpm), cx, cy - 60);
+  g2.fillStyle = '#8d97a5'; g2.font = '600 18px system-ui';
+  g2.fillText('rpm', cx, cy - 15);
+
+  $('thrTxt').textContent = Math.round(state.thr * 100) + '%';
+  $('gearTxt').textContent = state.gear === -2 ? '–' : state.gear < 0 ? 'N' : state.gear + 1;
+  $('spdTxt').textContent = Math.round(state.speed);
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+/* ---------- UI ---------- */
+const profBox = $('profiles');
+for (const [id, p] of Object.entries(PROFILES)) {
+  const b = document.createElement('button');
+  b.className = 'prof' + (id === state.profile ? ' on' : '');
+  b.innerHTML = `<b>${p.name}</b><small>${p.desc}</small>`;
+  b.onclick = () => {
+    state.profile = id;
+    document.querySelectorAll('.prof').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    if (audio.node) audio.node.port.postMessage({ profile: p });
+  };
+  profBox.appendChild(b);
+}
+
+$('startBtn').onclick = async () => {
+  await startAudio();
+  state.running = true;
+  if (state.rpm < 100) state.rpm = prof().idle * 1.6;
+  $('startBtn').disabled = true; $('stopBtn').disabled = false;
+};
+$('stopBtn').onclick = async () => {
+  state.running = false; state.rpm = 0; state.speed = 0; state.thr = 0;
+  if (audio.ctx) await audio.ctx.suspend();
+  $('startBtn').disabled = false; $('stopBtn').disabled = true;
+};
+
+const gas = $('gas');
+const press = () => { state.thrTarget = pedal.value / 100; gas.classList.add('down'); };
+const release = () => { state.thrTarget = 0; gas.classList.remove('down'); };
+gas.addEventListener('pointerdown', e => { gas.setPointerCapture(e.pointerId); press(); });
+gas.addEventListener('pointerup', release);
+gas.addEventListener('pointercancel', release);
+gas.addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('keydown', e => { if (e.code === 'Space' && !e.repeat) { e.preventDefault(); press(); } });
+addEventListener('keyup', e => { if (e.code === 'Space') release(); });
+pedal.oninput = () => { $('pedalVal').textContent = pedal.value + '%'; if (gas.classList.contains('down')) press(); };
+vol.oninput = () => { $('volVal').textContent = vol.value + '%'; if (audio.gain) audio.gain.gain.value = vol.value / 100; };
+pops.onchange = () => audio.node && audio.node.port.postMessage({ pops: pops.checked });
+turbo.onchange = () => audio.node && audio.node.port.postMessage({ turbo: turbo.checked });
+
+function setMode(m) {
+  state.mode = m;
+  $('tabSim').classList.toggle('on', m === 'sim'); $('tabObd').classList.toggle('on', m === 'obd');
+  $('simPanel').classList.toggle('hidden', m !== 'sim'); $('obdPanel').classList.toggle('hidden', m !== 'obd');
+  release();
+}
+$('tabSim').onclick = () => setMode('sim');
+$('tabObd').onclick = () => setMode('obd');
+$('showLog').onchange = e => { $('log').style.display = e.target.checked ? 'block' : 'none'; };
+
+/* ---------- OBD2 over Bluetooth LE (ELM327 compatible) ---------- */
+const OBD_SERVICES = [0xfff0, 0xffe0, 0x18f0, 'e7810a71-73ae-499d-8c15-faa9aef0c3f2'];
+const obd = { dev: null, wr: null, buf: '', pending: null, alive: false };
+
+function log(s) { const l = $('log'); l.textContent += s + '\n'; l.scrollTop = l.scrollHeight; }
+function status(s, cls = '') { const el = $('status'); el.textContent = s; el.className = cls; }
+
+function onData(e) {
+  obd.buf += new TextDecoder().decode(e.target.value);
+  const i = obd.buf.indexOf('>');
+  if (i >= 0 && obd.pending) {
+    const resp = obd.buf.slice(0, i); obd.buf = obd.buf.slice(i + 1);
+    const p = obd.pending; obd.pending = null; clearTimeout(p.t); p.res(resp);
+  }
+}
+function send(cmd, timeout = 1500) {
+  return new Promise((res, rej) => {
+    obd.buf = '';
+    obd.pending = { res, t: setTimeout(() => { obd.pending = null; rej(new Error('timeout ' + cmd)); }, timeout) };
+    const data = new TextEncoder().encode(cmd + '\r');
+    const write = obd.wr.properties.writeWithoutResponse
+      ? v => obd.wr.writeValueWithoutResponse(v) : v => obd.wr.writeValueWithResponse(v);
+    (async () => { for (let k = 0; k < data.length; k += 20) await write(data.slice(k, k + 20)); })().catch(rej);
+  });
+}
+function parsePid(resp, pid) {
+  const s = resp.replace(/[\s\r\n]/g, '').toUpperCase();
+  const i = s.indexOf('41' + pid);
+  if (i < 0) return null;
+  const hex = s.slice(i + 4).match(/^[0-9A-F]+/);
+  if (!hex) return null;
+  return hex[0].match(/../g).map(h => parseInt(h, 16));
+}
+
+async function obdConnect() {
+  if (!navigator.bluetooth) {
+    status('Browserul ăsta nu are Bluetooth web. Folosește Chrome pe Android sau pe calculator.', 'err'); return;
+  }
+  try {
+    status('Caut adaptorul…');
+    obd.dev = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: OBD_SERVICES });
+    obd.dev.addEventListener('gattserverdisconnected', () => { obd.alive = false; status('Adaptor deconectat', 'err'); uiObd(false); });
+    const server = await obd.dev.gatt.connect();
+    let wr = null, nt = null;
+    for (const sid of OBD_SERVICES) {
+      let svc; try { svc = await server.getPrimaryService(sid); } catch { continue; }
+      for (const c of await svc.getCharacteristics()) {
+        if (!wr && (c.properties.write || c.properties.writeWithoutResponse)) wr = c;
+        if (!nt && (c.properties.notify || c.properties.indicate)) nt = c;
+      }
+      if (wr && nt) break;
+    }
+    if (!wr || !nt) throw new Error('Nu am găsit canalul de date. Adaptorul e sigur ELM327 BLE?');
+    obd.wr = wr;
+    nt.addEventListener('characteristicvaluechanged', onData);
+    await nt.startNotifications();
+    status('Inițializez adaptorul…');
+    log('> ATZ ' + (await send('ATZ', 3000)).trim());
+    for (const c of ['ATE0', 'ATL0', 'ATS0', 'ATH0', 'ATSP0']) log('> ' + c + ' ' + (await send(c)).trim());
+    log('> 0100 ' + (await send('0100', 8000)).trim());
+    obd.alive = true; uiObd(true);
+    status('Conectat la mașină ✓', 'ok');
+    if (!state.running) $('startBtn').click();
+    pollLoop();
+  } catch (err) {
+    log('Eroare: ' + err.message);
+    status('Nu s-a putut conecta: ' + err.message, 'err');
+    uiObd(false);
+  }
+}
+
+async function pollLoop() {
+  const o = state.obd;
+  let n = 0, lastT = performance.now();
+  while (obd.alive) {
+    try {
+      const r = parsePid(await send('010C'), '0C');
+      if (r && r.length >= 2) {
+        const v = (r[0] * 256 + r[1]) / 4, t = performance.now(), dt = (t - lastT) / 1000;
+        if (o.rpm != null && dt > 0) o.slope = o.slope * 0.5 + ((v - o.rpm) / dt) * 0.5;
+        o.rpm = v; o.tRpm = v; lastT = t;
+      }
+      if (n % 2 === 0) {
+        let pr = parsePid(await send('0149'), '49');
+        if (!pr) pr = parsePid(await send('0111'), '11');
+        if (pr) { o.pedal = pr[0] * 100 / 255; o.pMin = Math.min(o.pMin, o.pedal); o.pMax = Math.max(o.pMax, o.pedal); }
+      }
+      if (n % 10 === 0) { const sp = parsePid(await send('010D'), '0D'); if (sp) o.speed = sp[0]; }
+      n++;
+    } catch (err) { log(err.message); }
+  }
+}
+
+function uiObd(on) { $('obdBtn').disabled = on; $('obdOff').disabled = !on; }
+$('obdBtn').onclick = obdConnect;
+$('obdOff').onclick = () => { obd.alive = false; if (obd.dev && obd.dev.gatt.connected) obd.dev.gatt.disconnect(); uiObd(false); status('Neconectat'); };
+
+window.__turatie = { state, audio, PROFILES };
+</script>
+</body>
+</html>
