@@ -140,16 +140,25 @@
   </div>
 
   <p class="hint" style="font-size:12px">Înregistrări reale de pe freesound.org, licență CC0 (domeniu public):
-    „DynoJet Scion FR-S” de dezoris.</p>
+    „Big Cam C6 Corvette” de Angel_soto, „Sedan engine loop” de Dmitry_mansurev64,
+    „XSR700 tickover loop” de richwise.</p>
 
 <script>
 /* ---------- Profiles (generic engine types, procedurally synthesized) ---------- */
 const even = n => Array.from({ length: n }, (_, i) => i / n);
 const PROFILES = {
-  real_boxer: { name: 'Boxer sport', desc: 'Înregistrare reală pe stand dinamometric', real: true,
-            ramp: 'sunete/boxer_dyno.wav', rLow: 3900, rHigh: 7400,
-            fire: [0, .29, .5, .79], amp: [1, .78, .95, .74], res: [[85, 2.5, .6], [230, 3, .35], [650, 5, .1]],
-            decay: .005, noise: .3, drive: 2, wBody: .9, wRes: 1, idle: 850, redline: 7400, turbo: false },
+  real_v8: { name: 'V8 cu came', desc: 'Înregistrare reală · Corvette C6', real: true,
+            sample: 'sunete/v8.wav', base: 830,
+            fire: even(8), amp: [1, .58, .95, .7, .9, .55, 1, .64], res: [[68, 2, .75], [175, 3, .4], [470, 4, .15]],
+            decay: .006, noise: .35, drive: 2.6, wBody: 1, wRes: 1, idle: 830, redline: 6500, turbo: false },
+  real_4: { name: '4 cilindri', desc: 'Înregistrare reală · sedan', real: true,
+            sample: 'sunete/4cil.wav', base: 1000,
+            fire: even(4), amp: [1, .9, .97, .88], res: [[95, 2.5, .55], [260, 4, .35], [820, 5, .12]],
+            decay: .004, noise: .25, drive: 1.6, wBody: .8, wRes: 1, idle: 800, redline: 6200, turbo: true },
+  real_moto: { name: 'Moto 2 cilindri', desc: 'Înregistrare reală · motocicletă', real: true,
+            sample: 'sunete/moto.wav', base: 1300,
+            fire: [0, .375], amp: [1, .9], res: [[110, 2.5, .6], [380, 3.5, .4], [1300, 5, .15]],
+            decay: .004, noise: .3, drive: 2.2, wBody: .9, wRes: 1, idle: 1300, redline: 9000, turbo: false },
   tsi4:   { name: '4 cilindri turbo', desc: 'Ca motorul tău 1.4 TSI, dar mai plin',
             fire: even(4), amp: [1, .9, .97, .88], res: [[95, 2.5, .55], [260, 4, .35], [820, 5, .12]],
             decay: .004, noise: .25, drive: 1.6, wBody: .8, wRes: 1, idle: 750, redline: 6200, turbo: true },
@@ -261,54 +270,11 @@ class EngineProc extends AudioWorkletProcessor {
   }
 }
 registerProcessor('engine', EngineProc);
-
-// Plays a real recording of an engine pull: overlapping grains read from the
-// spot in the recording that matches the current rpm, so the sound is the real one.
-class GrainProc extends AudioWorkletProcessor {
-  constructor() {
-    super();
-    this.buf = null; this.pos = 0; this.tPos = 0; this.rate = 1; this.tRate = 1;
-    this.G = Math.round(sampleRate * 0.1); this.hop = Math.round(this.G / 4); this.next = 0; this.grains = [];
-    this.port.onmessage = e => {
-      const d = e.data;
-      if (d.buf) { this.buf = d.buf; this.grains = []; }
-      if (d.pos !== undefined) this.tPos = d.pos;
-      if (d.rate !== undefined) this.tRate = d.rate;
-    };
-  }
-  process(inputs, outputs) {
-    const out = outputs[0][0], b = this.buf;
-    if (!b) return true;
-    const N = b.length, G = this.G;
-    for (let n = 0; n < out.length; n++) {
-      this.pos += (this.tPos - this.pos) * 0.0004;
-      this.rate += (this.tRate - this.rate) * 0.0004;
-      if (--this.next <= 0) {
-        this.next = this.hop;
-        const span = G * this.rate;
-        let st = this.pos * (N - span - 2) + (Math.random() - 0.5) * G * 0.6;
-        st = Math.min(N - span - 2, Math.max(0, st));
-        this.grains.push({ st, t: 0, r: this.rate });
-      }
-      let y = 0;
-      for (let i = this.grains.length - 1; i >= 0; i--) {
-        const g = this.grains[i];
-        const x = g.st + g.t * g.r, k = x | 0, f = x - k;
-        const v = b[k] + (b[k + 1] - b[k]) * f;
-        y += v * (0.5 - 0.5 * Math.cos(2 * Math.PI * g.t / G));
-        if (++g.t >= G) this.grains.splice(i, 1);
-      }
-      out[n] = y * 0.5;
-    }
-    return true;
-  }
-}
-registerProcessor('grain', GrainProc);
 `;
 
 /* ---------- Audio engine ---------- */
 const audio = { ctx: null, node: null, lp: null, gain: null, analyser: null,
-                synthGain: null, sampleGain: null, grain: null, buffers: {} };
+                synthGain: null, sampleGain: null, src: null, buffers: {} };
 
 async function loadSample(url) {
   if (audio.buffers[url]) return audio.buffers[url];
@@ -319,11 +285,15 @@ async function applyProfileAudio() {
   if (!audio.ctx) return;
   const p = prof();
   audio.node.port.postMessage({ profile: p });
-  if (!p.ramp) return;
+  if (audio.src) { try { audio.src.stop(); } catch {} audio.src.disconnect(); audio.src = null; }
+  if (!p.sample) return;
   try {
-    const buf = await loadSample(p.ramp);
+    const buf = await loadSample(p.sample);
     if (prof() !== p) return;
-    audio.grain.port.postMessage({ buf: buf.getChannelData(0).slice() });
+    const src = audio.ctx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    src.connect(audio.sampleGain); src.start();
+    audio.src = src;
   } catch (e) { console.warn('Nu am putut încărca sunetul', e); }
 }
 async function startAudio() {
@@ -338,12 +308,11 @@ async function startAudio() {
   const analyser = ctx.createAnalyser(); analyser.fftSize = 2048;
   const synthGain = ctx.createGain(), sampleGain = ctx.createGain();
   sampleGain.gain.value = 0;
-  const grain = new AudioWorkletNode(ctx, 'grain', { outputChannelCount: [1] });
   node.connect(synthGain).connect(lp);
-  grain.connect(sampleGain).connect(lp);
+  sampleGain.connect(lp);
   lp.connect(comp).connect(gain).connect(ctx.destination);
   gain.connect(analyser);
-  Object.assign(audio, { ctx, node, lp, gain, analyser, synthGain, sampleGain, grain });
+  Object.assign(audio, { ctx, node, lp, gain, analyser, synthGain, sampleGain });
   node.port.postMessage({ pops: pops.checked, turbo: turbo.checked });
   await applyProfileAudio();
 }
@@ -351,7 +320,7 @@ async function startAudio() {
 /* ---------- State & simulation ---------- */
 const $ = id => document.getElementById(id);
 const vol = $('vol'), pops = $('pops'), turbo = $('turbo'), pedal = $('pedal'), driveMode = $('driveMode');
-const state = { profile: 'real_boxer', running: false, mode: 'sim', rpm: 0, thr: 0, thrTarget: 0, speed: 0, gear: 0,
+const state = { profile: 'real_v8', running: false, mode: 'sim', rpm: 0, thr: 0, thrTarget: 0, speed: 0, gear: 0,
                 obd: { rpm: null, rpmPrev: null, tRpm: 0, slope: 0, pedal: 0, pMin: 100, pMax: 0, speed: 0 } };
 
 function prof() { return PROFILES[state.profile]; }
@@ -402,15 +371,13 @@ setInterval(() => {
     audio.node.port.postMessage({ rpm: state.rpm, thr: state.thr });
     const p = prof();
     const t = audio.ctx.currentTime, frac = Math.min(1, state.rpm / p.redline);
-    if (p.ramp) {
-      // map rpm onto the recorded pull; only a gentle pitch correction at low revs
-      const pos = Math.min(1, Math.max(0, (state.rpm - p.idle) / (p.redline - p.idle)));
-      const natural = p.rLow + pos * (p.rHigh - p.rLow);
-      const rate = Math.min(1.15, Math.max(0.55, Math.pow(Math.max(1, state.rpm) / natural, 0.35)));
-      audio.grain.port.postMessage({ pos, rate });
-      audio.sampleGain.gain.setTargetAtTime(2.6 * (0.45 + 0.55 * state.thr), t, 0.05);
-      audio.synthGain.gain.setTargetAtTime(0, t, 0.05);
-      audio.lp.frequency.setTargetAtTime(2500 + state.thr * 9000, t, 0.05);
+    if (p.sample) {
+      // real recording pitched by rpm, synth layer blended in as revs climb
+      const rate = Math.min(4, Math.max(0.6, Math.pow(Math.max(1, state.rpm) / p.base, 0.8)));
+      if (audio.src) audio.src.playbackRate.setTargetAtTime(rate, t, 0.03);
+      audio.sampleGain.gain.setTargetAtTime((0.55 + 0.45 * state.thr) * (1 - 0.5 * frac) * 1.6, t, 0.05);
+      audio.synthGain.gain.setTargetAtTime(0.1 + 0.8 * frac * (0.4 + 0.6 * state.thr), t, 0.05);
+      audio.lp.frequency.setTargetAtTime(1800 + state.thr * 5000 + frac * 4000, t, 0.05);
     } else {
       audio.synthGain.gain.setTargetAtTime(1, t, 0.05);
       audio.sampleGain.gain.setTargetAtTime(0, t, 0.05);
