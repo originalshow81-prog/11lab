@@ -38,8 +38,6 @@
     text-align: left; color: var(--text); cursor: pointer; font: inherit; }
   .prof b { display: block; font-size: 14px; }
   .prof small { color: var(--muted); font-size: 12px; }
-  .prof.real b::after { content: 'REAL'; font-size: 10px; font-weight: 800; letter-spacing: 1px;
-    color: #fff; background: var(--ok); border-radius: 4px; padding: 1px 5px; margin-left: 6px; vertical-align: 2px; }
   .prof.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   button.btn { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 12px 16px;
@@ -139,26 +137,10 @@
       Folosește aplicația doar în habitaclu și nu umbla la telefon în timp ce conduci.</p>
   </div>
 
-  <p class="hint" style="font-size:12px">Înregistrări reale de pe freesound.org, licență CC0 (domeniu public):
-    „Big Cam C6 Corvette” de Angel_soto, „Sedan engine loop” de Dmitry_mansurev64,
-    „XSR700 tickover loop” de richwise.</p>
-
 <script>
 /* ---------- Profiles (generic engine types, procedurally synthesized) ---------- */
 const even = n => Array.from({ length: n }, (_, i) => i / n);
 const PROFILES = {
-  real_v8: { name: 'V8 cu came', desc: 'Înregistrare reală · Corvette C6', real: true,
-            sample: 'sunete/v8.wav', base: 830,
-            fire: even(8), amp: [1, .58, .95, .7, .9, .55, 1, .64], res: [[68, 2, .75], [175, 3, .4], [470, 4, .15]],
-            decay: .006, noise: .35, drive: 2.6, wBody: 1, wRes: 1, idle: 830, redline: 6500, turbo: false },
-  real_4: { name: '4 cilindri', desc: 'Înregistrare reală · sedan', real: true,
-            sample: 'sunete/4cil.wav', base: 1000,
-            fire: even(4), amp: [1, .9, .97, .88], res: [[95, 2.5, .55], [260, 4, .35], [820, 5, .12]],
-            decay: .004, noise: .25, drive: 1.6, wBody: .8, wRes: 1, idle: 800, redline: 6200, turbo: true },
-  real_moto: { name: 'Moto 2 cilindri', desc: 'Înregistrare reală · motocicletă', real: true,
-            sample: 'sunete/moto.wav', base: 1300,
-            fire: [0, .375], amp: [1, .9], res: [[110, 2.5, .6], [380, 3.5, .4], [1300, 5, .15]],
-            decay: .004, noise: .3, drive: 2.2, wBody: .9, wRes: 1, idle: 1300, redline: 9000, turbo: false },
   tsi4:   { name: '4 cilindri turbo', desc: 'Ca motorul tău 1.4 TSI, dar mai plin',
             fire: even(4), amp: [1, .9, .97, .88], res: [[95, 2.5, .55], [260, 4, .35], [820, 5, .12]],
             decay: .004, noise: .25, drive: 1.6, wBody: .8, wRes: 1, idle: 750, redline: 6200, turbo: true },
@@ -273,29 +255,7 @@ registerProcessor('engine', EngineProc);
 `;
 
 /* ---------- Audio engine ---------- */
-const audio = { ctx: null, node: null, lp: null, gain: null, analyser: null,
-                synthGain: null, sampleGain: null, src: null, buffers: {} };
-
-async function loadSample(url) {
-  if (audio.buffers[url]) return audio.buffers[url];
-  const data = await (await fetch(url)).arrayBuffer();
-  return (audio.buffers[url] = await audio.ctx.decodeAudioData(data));
-}
-async function applyProfileAudio() {
-  if (!audio.ctx) return;
-  const p = prof();
-  audio.node.port.postMessage({ profile: p });
-  if (audio.src) { try { audio.src.stop(); } catch {} audio.src.disconnect(); audio.src = null; }
-  if (!p.sample) return;
-  try {
-    const buf = await loadSample(p.sample);
-    if (prof() !== p) return;
-    const src = audio.ctx.createBufferSource();
-    src.buffer = buf; src.loop = true;
-    src.connect(audio.sampleGain); src.start();
-    audio.src = src;
-  } catch (e) { console.warn('Nu am putut încărca sunetul', e); }
-}
+const audio = { ctx: null, node: null, lp: null, gain: null, analyser: null };
 async function startAudio() {
   if (audio.ctx) { await audio.ctx.resume(); return; }
   const ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
@@ -306,21 +266,16 @@ async function startAudio() {
   const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4;
   const gain = ctx.createGain(); gain.gain.value = vol.value / 100;
   const analyser = ctx.createAnalyser(); analyser.fftSize = 2048;
-  const synthGain = ctx.createGain(), sampleGain = ctx.createGain();
-  sampleGain.gain.value = 0;
-  node.connect(synthGain).connect(lp);
-  sampleGain.connect(lp);
-  lp.connect(comp).connect(gain).connect(ctx.destination);
+  node.connect(lp).connect(comp).connect(gain).connect(ctx.destination);
   gain.connect(analyser);
-  Object.assign(audio, { ctx, node, lp, gain, analyser, synthGain, sampleGain });
-  node.port.postMessage({ pops: pops.checked, turbo: turbo.checked });
-  await applyProfileAudio();
+  Object.assign(audio, { ctx, node, lp, gain, analyser });
+  node.port.postMessage({ profile: PROFILES[state.profile], pops: pops.checked, turbo: turbo.checked });
 }
 
 /* ---------- State & simulation ---------- */
 const $ = id => document.getElementById(id);
 const vol = $('vol'), pops = $('pops'), turbo = $('turbo'), pedal = $('pedal'), driveMode = $('driveMode');
-const state = { profile: 'real_v8', running: false, mode: 'sim', rpm: 0, thr: 0, thrTarget: 0, speed: 0, gear: 0,
+const state = { profile: 'tsi4', running: false, mode: 'sim', rpm: 0, thr: 0, thrTarget: 0, speed: 0, gear: 0,
                 obd: { rpm: null, rpmPrev: null, tRpm: 0, slope: 0, pedal: 0, pMin: 100, pMax: 0, speed: 0 } };
 
 function prof() { return PROFILES[state.profile]; }
@@ -370,19 +325,7 @@ setInterval(() => {
   if (audio.node) {
     audio.node.port.postMessage({ rpm: state.rpm, thr: state.thr });
     const p = prof();
-    const t = audio.ctx.currentTime, frac = Math.min(1, state.rpm / p.redline);
-    if (p.sample) {
-      // real recording pitched by rpm, synth layer blended in as revs climb
-      const rate = Math.min(4, Math.max(0.6, Math.pow(Math.max(1, state.rpm) / p.base, 0.8)));
-      if (audio.src) audio.src.playbackRate.setTargetAtTime(rate, t, 0.03);
-      audio.sampleGain.gain.setTargetAtTime((0.55 + 0.45 * state.thr) * (1 - 0.5 * frac) * 1.6, t, 0.05);
-      audio.synthGain.gain.setTargetAtTime(0.1 + 0.8 * frac * (0.4 + 0.6 * state.thr), t, 0.05);
-      audio.lp.frequency.setTargetAtTime(1800 + state.thr * 5000 + frac * 4000, t, 0.05);
-    } else {
-      audio.synthGain.gain.setTargetAtTime(1, t, 0.05);
-      audio.sampleGain.gain.setTargetAtTime(0, t, 0.05);
-      audio.lp.frequency.setTargetAtTime(900 + state.thr * 5000 + frac * 2500, t, 0.05);
-    }
+    audio.lp.frequency.setTargetAtTime(900 + state.thr * 5000 + (state.rpm / p.redline) * 2500, audio.ctx.currentTime, 0.05);
   }
 }, 16);
 
@@ -424,13 +367,13 @@ requestAnimationFrame(draw);
 const profBox = $('profiles');
 for (const [id, p] of Object.entries(PROFILES)) {
   const b = document.createElement('button');
-  b.className = 'prof' + (p.real ? ' real' : '') + (id === state.profile ? ' on' : '');
+  b.className = 'prof' + (id === state.profile ? ' on' : '');
   b.innerHTML = `<b>${p.name}</b><small>${p.desc}</small>`;
   b.onclick = () => {
     state.profile = id;
     document.querySelectorAll('.prof').forEach(x => x.classList.remove('on'));
     b.classList.add('on');
-    applyProfileAudio();
+    if (audio.node) audio.node.port.postMessage({ profile: p });
   };
   profBox.appendChild(b);
 }
